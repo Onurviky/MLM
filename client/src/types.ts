@@ -69,7 +69,7 @@ export type ShippingMethod = {
   sortOrder: number;
 };
 
-export type PaymentMethod = "MERCADOPAGO" | "TRANSFER" | "WHATSAPP";
+export type PaymentMethod = "NARANJAX" | "TRANSFER" | "WHATSAPP";
 
 export type CartItem = {
   id: string;
@@ -149,7 +149,7 @@ export type AppliedCoupon = {
 export type StoreSettings = {
   maxInstallments: number;
   freeShippingThresholdCents: number | null;
-  mercadoPagoConfigured: boolean;
+  naranjaXConfigured: boolean;
   whatsappPhone: string | null;
   bankAlias: string | null;
   bankAccountHolder: string | null;

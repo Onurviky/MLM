@@ -9,3 +9,5 @@ orderRouter.use(requireAuth);
 orderRouter.post("/", asyncHandler(orderController.checkout));
 orderRouter.get("/", asyncHandler(orderController.listMyOrders));
 orderRouter.get("/:id", asyncHandler(orderController.getMyOrder));
+orderRouter.post("/:id/sync-payment", asyncHandler(orderController.syncPayment));
+orderRouter.post("/:id/simulate-payment", asyncHandler(orderController.simulatePayment));

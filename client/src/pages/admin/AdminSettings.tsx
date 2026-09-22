@@ -67,14 +67,14 @@ export function AdminSettings() {
       <h1 className="mb-4 font-heading text-3xl tracking-wide text-ink">Configuracion</h1>
 
       <div className="mb-10">
-        <Badge tone={publicSettings?.mercadoPagoConfigured ? "success" : "accent"}>
-          Mercado Pago: {publicSettings?.mercadoPagoConfigured ? "conectado" : "sin configurar (falta MP_ACCESS_TOKEN)"}
+        <Badge tone={publicSettings?.naranjaXConfigured ? "success" : "accent"}>
+          Naranja X: {publicSettings?.naranjaXConfigured ? "conectado" : "sin configurar (falta NX_API_KEY)"}
         </Badge>
       </div>
 
       <form onSubmit={handleSubmit} className="max-w-xl space-y-6 border border-border p-6">
         <Input
-          label="Cuotas maximas (Mercado Pago)"
+          label="Cuotas maximas a mostrar (Naranja X)"
           type="number"
           min="1"
           max="24"
@@ -83,7 +83,7 @@ export function AdminSettings() {
           error={errors.maxInstallments}
         />
         <p className="-mt-4 text-xs text-ink-dim">
-          El interes de cada cuota lo define el banco emisor de la tarjeta a traves de Mercado Pago, no la tienda.
+          Se muestra en la ficha de cada producto. Las cuotas disponibles al pagar las define Naranja X, no la tienda.
         </p>
 
         <Input
@@ -100,7 +100,7 @@ export function AdminSettings() {
         </p>
 
         <div className="space-y-5 border-t border-border pt-6">
-          <p className="text-xs uppercase tracking-widest2 text-ink-dim">Pago manual (sin Mercado Pago)</p>
+          <p className="text-xs uppercase tracking-widest2 text-ink-dim">Pago manual (sin Naranja X)</p>
           <Input
             label="WhatsApp para completar pedidos (opcional)"
             value={whatsappPhone}

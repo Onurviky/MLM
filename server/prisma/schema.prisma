@@ -105,7 +105,7 @@ model Order {
   totalCents         Int
   couponCode         String?
   installments       Int         @default(1)
-  paymentMethod      String      @default("MERCADOPAGO")
+  paymentMethod      String      @default("NARANJAX")
   paymentId          String?
   paymentStatusDetail String?
   trackingCode       String?

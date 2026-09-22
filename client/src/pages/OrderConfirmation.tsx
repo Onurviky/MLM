@@ -1,6 +1,6 @@
 import { Link, useParams } from "react-router-dom";
-import { CheckCircle2, MessageCircle } from "lucide-react";
-import { useOrder } from "@/hooks/useOrders";
+import { CheckCircle2, Clock, MessageCircle, XCircle } from "lucide-react";
+import { useSyncPayment } from "@/hooks/useOrders";
 import { useSettings } from "@/hooks/useSettings";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -23,19 +23,24 @@ const STATUS_LABEL: Record<string, string> = {
 
 export function OrderConfirmation() {
   const { id } = useParams();
-  const { data, isLoading } = useOrder(id);
+  // Al volver de Naranja X, esta consulta verifica el estado real del pago antes de mostrar el pedido.
+  const { data, isLoading } = useSyncPayment(id);
   const { data: settings } = useSettings();
 
   if (isLoading) return <Spinner className="min-h-[60vh]" />;
   if (!data) return null;
 
   const order = data.item;
+  const awaitingNaranjaX = order.paymentMethod === "NARANJAX" && order.status === "PENDING";
+  const rejectedNaranjaX = order.paymentMethod === "NARANJAX" && order.status === "CANCELLED";
+  const HeaderIcon = awaitingNaranjaX ? Clock : rejectedNaranjaX ? XCircle : CheckCircle2;
+  const title = awaitingNaranjaX ? "Esperando tu pago" : rejectedNaranjaX ? "El pago no se completo" : "Pedido confirmado";
 
   return (
     <div className="mx-auto max-w-3xl px-6 py-20">
       <div className="flex flex-col items-center text-center">
-        <CheckCircle2 className="h-10 w-10 text-success" strokeWidth={1.25} />
-        <h1 className="mt-6 font-heading text-4xl tracking-wide text-ink">Pedido confirmado</h1>
+        <HeaderIcon className={`h-10 w-10 ${rejectedNaranjaX ? "text-accent-hover" : "text-success"}`} strokeWidth={1.25} />
+        <h1 className="mt-6 font-heading text-4xl tracking-wide text-ink">{title}</h1>
         <p className="mt-2 text-sm text-ink-muted">Numero de pedido: {order.id}</p>
         <div className="mt-4">
           <Badge tone={order.status === "CANCELLED" ? "accent" : "success"}>{STATUS_LABEL[order.status]}</Badge>
@@ -72,6 +77,25 @@ export function OrderConfirmation() {
           </div>
         </div>
       </div>
+
+      {awaitingNaranjaX && (
+        <div className="mt-6 border border-border p-6 text-sm text-ink-muted">
+          <p className="mb-3 text-xs uppercase tracking-widest2 text-ink-dim">Pago en Naranja X</p>
+          Todavia no recibimos la confirmacion de Naranja X. Si ya pagaste, el pedido se actualiza solo en unos
+          minutos; recarga esta pagina para ver el estado.
+        </div>
+      )}
+
+      {rejectedNaranjaX && (
+        <div className="mt-6 border border-border p-6 text-center text-sm">
+          <p className="mb-4 text-ink-muted">
+            Naranja X no aprobo el pago, asi que el pedido quedo cancelado. Tus productos siguen en el carrito.
+          </p>
+          <Link to="/checkout">
+            <Button variant="secondary">Intentar de nuevo</Button>
+          </Link>
+        </div>
+      )}
 
       {order.paymentMethod === "TRANSFER" && order.status === "PENDING" && (
         <div className="mt-6 border border-border p-6 text-sm">

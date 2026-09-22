@@ -2,7 +2,13 @@ import type { Request, Response } from "express";
 import { prisma } from "../db";
 import { upsertAddress } from "../lib/address";
 import { sendTrackingEmail } from "../lib/mailer";
-import { getPaymentClient, isMercadoPagoConfigured } from "../lib/mercadopago";
+import {
+  createCheckout,
+  getPaymentStatus,
+  isNaranjaXConfigured,
+  isNaranjaXSimulated,
+  type NaranjaXPaymentStatus,
+} from "../lib/naranjax";
 import { checkCoupon, computeShippingCents } from "../lib/pricing";
 import { ApiError } from "../utils/ApiError";
 import { checkoutSchema, orderStatusSchema } from "../validation";
@@ -43,15 +49,15 @@ async function markOrderFailed(orderId: string, paymentId: string | null, status
   });
 }
 
-const REJECTION_MESSAGES: Record<string, string> = {
-  cc_rejected_insufficient_amount: "Fondos insuficientes en la tarjeta",
-  cc_rejected_bad_filled_card_number: "Revisa el numero de tarjeta",
-  cc_rejected_bad_filled_date: "Revisa la fecha de vencimiento",
-  cc_rejected_bad_filled_security_code: "Revisa el codigo de seguridad",
-  cc_rejected_call_for_authorize: "Tu banco requiere autorizar el pago",
-  cc_rejected_card_disabled: "La tarjeta esta deshabilitada",
-  cc_rejected_high_risk: "El pago fue rechazado por seguridad",
-};
+async function applyPaymentStatus(orderId: string, paymentId: string, status: NaranjaXPaymentStatus) {
+  if (status === "approved") {
+    await finalizeApprovedOrder(orderId, paymentId, "approved");
+    const order = await prisma.order.findUnique({ where: { id: orderId }, select: { userId: true } });
+    if (order) await prisma.cartItem.deleteMany({ where: { userId: order.userId } });
+  } else if (status === "rejected") {
+    await markOrderFailed(orderId, paymentId, "rejected");
+  }
+}
 
 const MANUAL_PAYMENT_STATUS_DETAIL: Record<string, string> = {
   TRANSFER: "Pendiente de confirmacion de transferencia",
@@ -62,7 +68,7 @@ export async function checkout(req: Request, res: Response) {
   const input = checkoutSchema.parse(req.body);
   const userId = req.user!.userId;
 
-  if (input.payment.method === "MERCADOPAGO" && !isMercadoPagoConfigured()) {
+  if (input.payment.method === "NARANJAX" && !isNaranjaXConfigured()) {
     throw new ApiError(503, "Los pagos no estan configurados todavia. Contacta al administrador.");
   }
 
@@ -115,7 +121,6 @@ export async function checkout(req: Request, res: Response) {
       totalCents,
       couponCode,
       paymentMethod: input.payment.method,
-      installments: input.payment.method === "MERCADOPAGO" ? input.payment.installments : 1,
       shippingMethodName: shippingMethod.name,
       shippingName: input.shippingName,
       shippingLine1: input.shippingLine1,
@@ -146,9 +151,9 @@ export async function checkout(req: Request, res: Response) {
     phone: input.shippingPhone,
   });
 
-  if (input.payment.method !== "MERCADOPAGO") {
+  if (input.payment.method !== "NARANJAX") {
     // Transferencia / WhatsApp: no hay confirmacion automatica de pago, asi que reservamos el
-    // stock ya mismo (a diferencia del flujo de Mercado Pago, que espera la aprobacion) para
+    // stock ya mismo (a diferencia del flujo de Naranja X, que espera la aprobacion) para
     // no venderlo dos veces mientras el admin verifica el pago manualmente.
     await decrementStockAndCoupon(
       order.items.map((i) => ({ variantId: i.variantId, quantity: i.quantity })),
@@ -165,89 +170,85 @@ export async function checkout(req: Request, res: Response) {
     return;
   }
 
+  // Naranja X: el cliente paga en la pagina de Naranja X. El carrito se vacia recien cuando el pago
+  // se aprueba, para que no lo pierda si abandona o le rechazan el pago.
   try {
-    let status: string | undefined;
-    let statusDetail: string;
-    let paymentId: string;
-
-    if (process.env.MP_SIMULATE === "true") {
-      // Credenciales de MP configuradas son de produccion y no hay sandbox disponible;
-      // esto simula la respuesta de Mercado Pago para poder probar el flujo localmente.
-      const rejected = input.payment.token === "simulate_rejected";
-      status = rejected ? "rejected" : "approved";
-      statusDetail = rejected ? "cc_rejected_other_reason" : "accredited";
-      paymentId = `SIMULATED-${order.id}`;
-    } else {
-      const paymentClient = getPaymentClient();
-      const response = await paymentClient.create({
-        body: {
-          transaction_amount: totalCents / 100,
-          token: input.payment.token,
-          description: `Pedido MLM #${order.id.slice(-8).toUpperCase()}`,
-          installments: input.payment.installments,
-          payment_method_id: input.payment.paymentMethodId,
-          issuer_id: input.payment.issuerId ? Number(input.payment.issuerId) : undefined,
-          external_reference: order.id,
-          payer: {
-            email: input.payment.payerEmail,
-            identification:
-              input.payment.identificationType && input.payment.identificationNumber
-                ? { type: input.payment.identificationType, number: input.payment.identificationNumber }
-                : undefined,
-          },
-        },
-      });
-
-      status = response.status;
-      statusDetail = response.status_detail ?? "";
-      paymentId = String(response.id ?? "");
-    }
-
-    if (status === "approved") {
-      await finalizeApprovedOrder(order.id, paymentId, statusDetail);
-      await prisma.cartItem.deleteMany({ where: { userId } });
-    } else if (status === "in_process" || status === "pending") {
-      await prisma.order.update({ where: { id: order.id }, data: { paymentId, paymentStatusDetail: statusDetail } });
-      await prisma.cartItem.deleteMany({ where: { userId } });
-    } else {
-      await markOrderFailed(order.id, paymentId, statusDetail);
-      const friendly = REJECTION_MESSAGES[statusDetail] ?? "El pago fue rechazado. Proba con otro medio de pago.";
-      throw new ApiError(402, friendly);
-    }
+    const payer = await prisma.user.findUnique({ where: { id: userId }, select: { email: true } });
+    const { paymentId, checkoutUrl } = await createCheckout({
+      orderId: order.id,
+      totalCents,
+      description: `Pedido MLM #${order.id.slice(-8).toUpperCase()}`,
+      payerEmail: payer?.email ?? "",
+    });
+    const pendingOrder = await prisma.order.update({
+      where: { id: order.id },
+      data: { paymentId, paymentStatusDetail: "Esperando pago en Naranja X" },
+      include: { items: true },
+    });
+    res.status(201).json({ item: serializeOrder(pendingOrder), checkoutUrl });
   } catch (error) {
-    if (error instanceof ApiError) throw error;
     await markOrderFailed(order.id, null, "processing_error");
-    console.error("Error procesando pago con Mercado Pago:", error);
-    throw new ApiError(502, "No se pudo procesar el pago. Intenta nuevamente.");
+    console.error("Error creando el cobro en Naranja X:", error);
+    throw new ApiError(502, "No se pudo iniciar el pago con Naranja X. Intenta nuevamente.");
+  }
+}
+
+// El cliente vuelve de Naranja X a la pagina del pedido y esta consulta el estado real del cobro
+// (por si el webhook todavia no llego o no puede llegar, como en desarrollo local).
+export async function syncPayment(req: Request, res: Response) {
+  const order = await prisma.order.findUnique({ where: { id: req.params.id } });
+  if (!order || order.userId !== req.user!.userId) {
+    throw new ApiError(404, "Pedido no encontrado");
   }
 
-  const finalOrder = await prisma.order.findUnique({ where: { id: order.id }, include: { items: true } });
-  res.status(201).json({ item: serializeOrder(finalOrder) });
+  if (order.paymentMethod === "NARANJAX" && order.status === "PENDING" && order.paymentId && !isNaranjaXSimulated()) {
+    try {
+      const status = await getPaymentStatus(order.paymentId);
+      await applyPaymentStatus(order.id, order.paymentId, status);
+    } catch (error) {
+      console.error("Error consultando el pago en Naranja X:", error);
+    }
+  }
+
+  const updated = await prisma.order.findUnique({ where: { id: order.id }, include: { items: true } });
+  res.json({ item: serializeOrder(updated) });
 }
 
 export async function paymentWebhook(req: Request, res: Response) {
+  // TODO(Naranja X): ajustar de donde sale el id del cobro segun el formato real de la notificacion.
+  // Nunca se confia en el estado que viene en el body: siempre se vuelve a consultar a Naranja X.
   try {
-    const paymentId = req.query["data.id"] ?? req.body?.data?.id ?? req.body?.id;
-    if (!paymentId || !isMercadoPagoConfigured()) {
+    const paymentId = req.body?.payment_id ?? req.body?.id ?? req.query.id;
+    if (!paymentId || !isNaranjaXConfigured() || isNaranjaXSimulated()) {
       return res.status(200).send();
     }
 
-    const paymentClient = getPaymentClient();
-    const payment = await paymentClient.get({ id: String(paymentId) });
-    const orderId = payment.external_reference;
-    if (!orderId) return res.status(200).send();
+    const order = await prisma.order.findFirst({ where: { paymentId: String(paymentId) } });
+    if (!order) return res.status(200).send();
 
-    if (payment.status === "approved") {
-      await finalizeApprovedOrder(orderId, String(payment.id ?? ""), payment.status_detail ?? "");
-    } else if (payment.status === "rejected" || payment.status === "cancelled") {
-      await markOrderFailed(orderId, String(payment.id ?? ""), payment.status_detail ?? "");
-    }
-
+    const status = await getPaymentStatus(order.paymentId!);
+    await applyPaymentStatus(order.id, order.paymentId!, status);
     res.status(200).send();
   } catch (error) {
-    console.error("Error procesando webhook de Mercado Pago:", error);
+    console.error("Error procesando webhook de Naranja X:", error);
     res.status(200).send();
   }
+}
+
+// Solo con NX_SIMULATE=true: reemplaza la pagina de pago de Naranja X para probar el flujo localmente.
+export async function simulatePayment(req: Request, res: Response) {
+  if (!isNaranjaXSimulated()) {
+    throw new ApiError(404, "No encontrado");
+  }
+  const order = await prisma.order.findUnique({ where: { id: req.params.id } });
+  if (!order || order.userId !== req.user!.userId || order.paymentMethod !== "NARANJAX") {
+    throw new ApiError(404, "Pedido no encontrado");
+  }
+  if (order.status === "PENDING" && order.paymentId) {
+    await applyPaymentStatus(order.id, order.paymentId, req.body?.approve ? "approved" : "rejected");
+  }
+  const updated = await prisma.order.findUnique({ where: { id: order.id }, include: { items: true } });
+  res.json({ item: serializeOrder(updated) });
 }
 
 export async function listMyOrders(req: Request, res: Response) {

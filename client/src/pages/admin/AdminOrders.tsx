@@ -20,7 +20,8 @@ const STATUS_LABEL: Record<OrderStatus, string> = {
   CANCELLED: "Cancelado",
 };
 const PAYMENT_METHOD_LABEL: Record<string, string> = {
-  MERCADOPAGO: "Tarjeta",
+  NARANJAX: "Naranja X",
+  MERCADOPAGO: "Mercado Pago",
   TRANSFER: "Transferencia",
   WHATSAPP: "WhatsApp",
 };
@@ -94,7 +95,7 @@ export function AdminOrders() {
                   <td className="px-4 py-3 text-ink-muted">{formatDate(order.createdAt)}</td>
                   <td className="px-4 py-3 text-ink-muted">{formatPrice(order.totalCents)}</td>
                   <td className="px-4 py-3">
-                    <Badge tone={order.paymentMethod === "MERCADOPAGO" ? "neutral" : "accent"}>
+                    <Badge tone={order.paymentMethod === "NARANJAX" ? "neutral" : "accent"}>
                       {PAYMENT_METHOD_LABEL[order.paymentMethod] ?? order.paymentMethod}
                     </Badge>
                   </td>

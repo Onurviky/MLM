@@ -8,6 +8,7 @@ import { Contact } from "@/pages/Contact";
 import { Cart } from "@/pages/Cart";
 import { Checkout } from "@/pages/Checkout";
 import { OrderConfirmation } from "@/pages/OrderConfirmation";
+import { SimulatedPayment } from "@/pages/SimulatedPayment";
 import { OrderHistory } from "@/pages/OrderHistory";
 import { AccountSettings } from "@/pages/AccountSettings";
 import { Login } from "@/pages/Login";
@@ -47,6 +48,7 @@ export function App() {
               <Route path="/cart" element={<Cart />} />
               <Route path="/checkout" element={<ProtectedRoute><Checkout /></ProtectedRoute>} />
               <Route path="/orders/:id" element={<ProtectedRoute><OrderConfirmation /></ProtectedRoute>} />
+              <Route path="/pago-simulado/:id" element={<ProtectedRoute><SimulatedPayment /></ProtectedRoute>} />
               <Route path="/account/orders" element={<ProtectedRoute><OrderHistory /></ProtectedRoute>} />
               <Route path="/account/settings" element={<ProtectedRoute><AccountSettings /></ProtectedRoute>} />
               <Route path="/login" element={<Login />} />

@@ -1,7 +1,6 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
-import { CardPayment } from "@mercadopago/sdk-react";
-import { AlertTriangle, ChevronLeft, MessageCircle } from "lucide-react";
+import { AlertTriangle, ChevronLeft, MessageCircle, Wallet } from "lucide-react";
 import { checkoutSchema } from "@shared/schemas";
 import { useAuth } from "@/context/AuthContext";
 import { useCoupon } from "@/context/CouponContext";
@@ -24,17 +23,6 @@ function buildWhatsAppUrl(phone: string, orderId: string, totalCents: number) {
   const text = `Hola! Quiero completar mi pedido #${orderShort} por ${formatPrice(totalCents)}.`;
   return `https://wa.me/${phone.replace(/\D/g, "")}?text=${encodeURIComponent(text)}`;
 }
-
-type CardBrickFormData = {
-  token: string;
-  payment_method_id: string;
-  issuer_id: string;
-  installments: number;
-  payer: {
-    email?: string;
-    identification?: { type: string; number: string };
-  };
-};
 
 export function Checkout() {
   const { user } = useAuth();
@@ -71,7 +59,7 @@ export function Checkout() {
 
   const availablePaymentMethods = useMemo(() => {
     const methods: PaymentMethod[] = [];
-    if (settings?.mercadoPagoConfigured) methods.push("MERCADOPAGO");
+    if (settings?.naranjaXConfigured) methods.push("NARANJAX");
     if (settings?.bankAlias) methods.push("TRANSFER");
     if (settings?.whatsappPhone) methods.push("WHATSAPP");
     return methods;
@@ -130,37 +118,24 @@ export function Checkout() {
     setStep("payment");
   }
 
-  async function handleCardSubmit(formData: CardBrickFormData) {
+  async function handleNaranjaXSubmit() {
     setPaymentError(null);
-    if (!formData.payer.email) {
-      const message = "No se pudo leer el email del pagador";
-      setPaymentError(message);
-      push(message, "error");
-      throw new Error(message);
-    }
+    setManualSubmitting(true);
     try {
-      const { item } = await checkout.mutateAsync({
+      const { checkoutUrl } = await checkout.mutateAsync({
         ...form,
         shippingMethodId: shippingMethodId!,
         couponCode: coupon?.code,
-        payment: {
-          method: "MERCADOPAGO",
-          token: formData.token,
-          paymentMethodId: formData.payment_method_id,
-          issuerId: formData.issuer_id,
-          installments: formData.installments,
-          payerEmail: formData.payer.email,
-          identificationType: formData.payer.identification?.type,
-          identificationNumber: formData.payer.identification?.number,
-        },
+        payment: { method: "NARANJAX" },
       });
+      if (!checkoutUrl) throw new Error("Naranja X no devolvio la pagina de pago");
       setCoupon(null);
-      navigate(`/orders/${item.id}`);
+      window.location.assign(checkoutUrl);
     } catch (error) {
-      const message = error instanceof ApiClientError ? error.message : "No se pudo procesar el pago";
+      const message = error instanceof ApiClientError ? error.message : "No se pudo iniciar el pago con Naranja X";
       setPaymentError(message);
       push(message, "error");
-      throw error;
+      setManualSubmitting(false);
     }
   }
 
@@ -201,7 +176,7 @@ export function Checkout() {
         <EmptyState
           icon={AlertTriangle}
           title="Pagos no configurados"
-          description="El administrador todavia no conecto ningun medio de pago (Mercado Pago, transferencia o WhatsApp). No se puede finalizar la compra por ahora."
+          description="El administrador todavia no conecto ningun medio de pago (Naranja X, transferencia o WhatsApp). No se puede finalizar la compra por ahora."
         />
       </div>
     );
@@ -319,7 +294,7 @@ export function Checkout() {
                           : "border-border-strong text-ink hover:border-ink",
                       )}
                     >
-                      {method === "MERCADOPAGO" ? "Tarjeta" : method === "TRANSFER" ? "Transferencia" : "WhatsApp"}
+                      {method === "NARANJAX" ? "Naranja X" : method === "TRANSFER" ? "Transferencia" : "WhatsApp"}
                     </button>
                   ))}
                 </div>
@@ -327,20 +302,18 @@ export function Checkout() {
 
               {paymentError && <p className="text-sm text-accent-hover">{paymentError}</p>}
 
-              {paymentMethod === "MERCADOPAGO" && (
-                <>
-                  <p className="text-xs uppercase tracking-widest2 text-ink-dim">Pago con tarjeta</p>
-                  <CardPayment
-                    key={totalCents}
-                    initialization={{ amount: totalCents / 100 }}
-                    customization={{
-                      visual: { style: { theme: "dark" } },
-                      paymentMethods: { minInstallments: 1, maxInstallments: settings?.maxInstallments ?? 1 },
-                    }}
-                    onSubmit={handleCardSubmit}
-                    onError={(err) => console.error("Mercado Pago Brick error:", err)}
-                  />
-                </>
+              {paymentMethod === "NARANJAX" && (
+                <div className="space-y-5 border border-border p-6">
+                  <p className="text-xs uppercase tracking-widest2 text-ink-dim">Pago con Naranja X</p>
+                  <p className="text-sm text-ink-muted">
+                    Te llevamos a Naranja X para pagar <span className="text-ink">{formatPrice(totalCents)}</span> con tu
+                    cuenta, tarjeta Naranja X o las cuotas disponibles. Al terminar volves a la tienda con tu pedido.
+                  </p>
+                  <Button className="w-full sm:w-auto" loading={manualSubmitting} onClick={handleNaranjaXSubmit}>
+                    <Wallet className="h-4 w-4" />
+                    Pagar con Naranja X
+                  </Button>
+                </div>
               )}
 
               {paymentMethod === "TRANSFER" && (

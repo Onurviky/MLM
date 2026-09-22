@@ -56,25 +56,14 @@ export const cartUpdateSchema = z.object({
 });
 export type CartUpdateInput = z.infer<typeof cartUpdateSchema>;
 
-export const PAYMENT_METHODS = ["MERCADOPAGO", "TRANSFER", "WHATSAPP"] as const;
+export const PAYMENT_METHODS = ["NARANJAX", "TRANSFER", "WHATSAPP"] as const;
 
-export const paymentDataSchema = z.object({
-  method: z.literal("MERCADOPAGO"),
-  token: z.string().min(1, "Token de pago invalido"),
-  paymentMethodId: z.string().min(1),
-  issuerId: z.string().optional(),
-  installments: z.coerce.number().int().min(1).max(24),
-  payerEmail: z.string().email(),
-  identificationType: z.string().optional(),
-  identificationNumber: z.string().optional(),
-});
-export type PaymentDataInput = z.infer<typeof paymentDataSchema>;
-
+const naranjaXPaymentSchema = z.object({ method: z.literal("NARANJAX") });
 const transferPaymentSchema = z.object({ method: z.literal("TRANSFER") });
 const whatsappPaymentSchema = z.object({ method: z.literal("WHATSAPP") });
 
 export const checkoutPaymentSchema = z.discriminatedUnion("method", [
-  paymentDataSchema,
+  naranjaXPaymentSchema,
   transferPaymentSchema,
   whatsappPaymentSchema,
 ]);

@@ -99,7 +99,7 @@ export function ProductDetail() {
           </div>
           {maxInstallments > 1 && (
             <p className="mt-2 text-xs text-ink-muted">
-              hasta {maxInstallments}x {formatPrice(installmentAmount)} con tarjeta de credito
+              hasta {maxInstallments}x {formatPrice(installmentAmount)} con Naranja X
             </p>
           )}
 

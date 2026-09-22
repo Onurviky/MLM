@@ -1,6 +1,6 @@
 import type { Request, Response } from "express";
 import { prisma } from "../db";
-import { isMercadoPagoConfigured } from "../lib/mercadopago";
+import { isNaranjaXConfigured } from "../lib/naranjax";
 import { getStoreSettings } from "../lib/pricing";
 import { settingsUpdateSchema } from "../validation";
 
@@ -9,7 +9,7 @@ export async function getPublicSettings(_req: Request, res: Response) {
   res.json({
     maxInstallments: settings.maxInstallments,
     freeShippingThresholdCents: settings.freeShippingThresholdCents,
-    mercadoPagoConfigured: isMercadoPagoConfigured(),
+    naranjaXConfigured: isNaranjaXConfigured(),
     whatsappPhone: settings.whatsappPhone,
     bankAlias: settings.bankAlias,
     bankAccountHolder: settings.bankAccountHolder,
