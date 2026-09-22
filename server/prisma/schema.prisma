@@ -1,0 +1,166 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String     @id @default(cuid())
+  email        String     @unique
+  passwordHash String
+  name         String
+  role         String     @default("CUSTOMER")
+  resetToken   String?    @unique
+  resetTokenExpiresAt DateTime?
+  createdAt    DateTime   @default(now())
+  addresses    Address[]
+  cartItems    CartItem[]
+  orders       Order[]
+}
+
+model Address {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fullName   String
+  line1      String
+  city       String
+  province   String
+  postalCode String
+  phone      String
+  createdAt  DateTime @default(now())
+}
+
+model Category {
+  id       String    @id @default(cuid())
+  name     String
+  slug     String    @unique
+  products Product[]
+}
+
+model Collection {
+  id          String    @id @default(cuid())
+  name        String
+  slug        String    @unique
+  description String?
+  image       String?
+  active      Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  products    Product[]
+}
+
+model Product {
+  id                 String           @id @default(cuid())
+  name               String
+  slug               String           @unique
+  description        String
+  priceCents         Int
+  compareAtPriceCents Int?
+  images             String
+  featured           Boolean          @default(false)
+  active             Boolean          @default(true)
+  categoryId         String
+  category           Category         @relation(fields: [categoryId], references: [id])
+  collectionId       String?
+  collection         Collection?      @relation(fields: [collectionId], references: [id])
+  variants           ProductVariant[]
+  createdAt          DateTime         @default(now())
+}
+
+model ProductVariant {
+  id         String      @id @default(cuid())
+  productId  String
+  product    Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  size       String
+  color      String
+  stock      Int         @default(0)
+  sku        String      @unique
+  cartItems  CartItem[]
+  orderItems OrderItem[]
+}
+
+model CartItem {
+  id        String         @id @default(cuid())
+  userId    String
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  variantId String
+  variant   ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  quantity  Int
+  createdAt DateTime       @default(now())
+
+  @@unique([userId, variantId])
+}
+
+model Order {
+  id                 String      @id @default(cuid())
+  userId             String
+  user               User        @relation(fields: [userId], references: [id])
+  status             String      @default("PENDING")
+  subtotalCents      Int         @default(0)
+  discountCents      Int         @default(0)
+  shippingCents      Int         @default(0)
+  totalCents         Int
+  couponCode         String?
+  installments       Int         @default(1)
+  paymentMethod      String      @default("MERCADOPAGO")
+  paymentId          String?
+  paymentStatusDetail String?
+  trackingCode       String?
+  shippingMethodName String      @default("")
+  shippingName       String
+  shippingLine1      String
+  shippingCity       String
+  shippingProvince   String
+  shippingPostalCode String
+  shippingPhone      String
+  items              OrderItem[]
+  createdAt          DateTime    @default(now())
+}
+
+model Coupon {
+  id               String    @id @default(cuid())
+  code             String    @unique
+  type             String
+  value            Int
+  active           Boolean   @default(true)
+  minPurchaseCents Int       @default(0)
+  maxUses          Int?
+  usesCount        Int       @default(0)
+  expiresAt        DateTime?
+  createdAt        DateTime  @default(now())
+}
+
+model StoreSettings {
+  id                         String  @id @default("singleton")
+  maxInstallments            Int     @default(1)
+  freeShippingThresholdCents Int?
+  whatsappPhone              String?
+  bankAlias                  String?
+  bankAccountHolder          String?
+}
+
+model ShippingMethod {
+  id          String   @id @default(cuid())
+  name        String
+  description String   @default("")
+  priceCents  Int       @default(0)
+  active      Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+}
+
+model OrderItem {
+  id             String         @id @default(cuid())
+  orderId        String
+  order          Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  variantId      String
+  variant        ProductVariant @relation(fields: [variantId], references: [id])
+  productName    String
+  size           String
+  color          String
+  unitPriceCents Int
+  quantity       Int
+}
